@@ -1,6 +1,6 @@
 {
   "title": "Simple AngularJS Authentication with JWT",
-  "description": "",
+  "description": "This tutorial will show you how to build an AngularJS authentication system using JWTs and $http interceptors.",
   "url": "angularjs-jwt-auth",
   "twitter": "IAmMattGreen",
   "coverImage": "",
