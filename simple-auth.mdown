@@ -1,0 +1,385 @@
+# Introduction
+
+In this tutorial I'm going to take you through building a simple
+authentication mechanism for AngularJS apps using JWTs (JSON web tokens)
+combined with local storage. We'll build out a service for managing the tokens
+and create an `$http` interceptor for automatically attaching the tokens to
+requests. As this guide discusses front-end concepts only, I have built out
+a publicly accessible test API that you are encouraged to test your own code
+against. If you're interested in learning about the backend component, checkout
+our [MEAN tutorial](https://thinkster.io/mean-stack-tutorial/) or let me know
+[on twitter](https://twitter.com/IAmMattGreen)!
+
+{video: simple-auth-intro}
+
+# What are JWTs
+
+JWTs provide a way for clients to authenticate every request without having to
+maintain a session or repeatedly pass login credentials to the server. A JWT
+consists of three main components: a header object, a claims object, and
+a signature. These three properties are encoded using base64, then concatenated
+with periods as separators. Some important things to know about JWT's:
+
+- The claims object contains an expiration date which dictates how long the token is valid for
+- The claims object can also contain custom bits of information such as a user ID
+- The token is NOT encrypted so anyone with it can read all the properties
+- The token IS signed by the server so if any of the values are changed, the server will reject it
+
+{x: read atlassian guide}
+Read Atlassian's [understaing JWT](https://developer.atlassian.com/static/connect/docs/concepts/understanding-jwt.html) guide
+
+You can also find more information about JWT at [jwt.io](http://jwt.io).
+
+
+# The Setup
+
+Before we dive in, let's start with some scaffolding for our example. Create
+two new files -- index.html and app.js -- in an empty directory and add the
+following code:
+
+{x: create index.html}
+Create index.html
+
+```html
+<html>
+	<head>
+    <title>Simple Angular Auth</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.0-beta.5/angular.min.js"></script>
+		<script src="app.js"></script>
+  </head>
+	<body ng-app="app" ng-controller="Main as main">
+    <h1>Simple Angular Auth - Thinkster</h1>
+
+    <input ng-model="main.username" placeholder="username"><br>
+    <input ng-model="main.password" placeholder="password"><br><br>
+
+    <button ng-click="main.register()">Register</button>
+    <button ng-click="main.login()">Login</button>
+    <button ng-click="main.logout()" ng-show="main.isAuthed()">Logout</button>
+    <button ng-click="main.getQuote()">get quote</button><br><br>
+    {{main.message}}
+
+    <br><br><br>
+    <a href="https://twitter.com/IAmMattGreen">shameless plug</a>
+	</body>
+</html>
+```
+
+{x: create app.js}
+Create app.js
+
+```javascript
+;(function(){
+function authInterceptor(API, auth) {
+  return {
+    // automatically attach Authorization header
+    request: function(config) {
+      return config;
+    },
+
+    // If a token was sent back, save it
+    response: function(res) {
+      return res;
+    },
+  }
+}
+
+function authService($window) {
+  var self = this;
+
+  // Add JWT methods here
+}
+
+function userService($http, API, auth) {
+  var self = this;
+  function handleRequest(res) {
+    auth.save(res.data.token);
+    return res.data.message;
+  }
+  self.getQuote = function() {
+    return $http.get(API + '/auth/quote')
+      .then(handleRequest)
+  }
+
+  // add authentication methods here
+
+}
+
+// We won't touch anything in here
+function MainCtrl(user) {
+  var self = this;
+
+  function handleRequest(res) {
+    var token = res.data ? res.data.token : null;
+    if(token) { console.log('JWT:', token); }
+    self.message = res.data.message;
+  }
+
+  self.login = function() {
+    user.login(self.username, self.password)
+      .then(handleRequest, handleRequest)
+  }
+  self.register = function() {
+    user.register(self.username, self.password)
+      .then(handleRequest, handleRequest)
+  }
+  self.getQuote = function() {
+    user.getQuote()
+      .then(handleRequest, handleRequest)
+  }
+}
+
+angular.module('app', [])
+.factory('authInterceptor', authInterceptor)
+.service('user', userService)
+.service('auth', authService)
+.constant('API', 'http://test-routes.herokuapp.com')
+.config(function($httpProvider) {
+  $httpProvider.interceptors.push('authInterceptor');
+})
+.controller('Main', MainCtrl)
+})();
+```
+
+For simplicities sake we'll be working out of these two files for the remainder
+of this tutorial.
+
+{note}
+Because we'll be making cross-origin requests to the test API, make sure you're
+serving these files from a local webserver and NOT from the file system.
+I recommend http://www.browsersync.io/ (`npm install -g browser-sync`)
+
+
+# Working with JWTs
+
+Before we can really examine the JWT, we'll need to get one from the server.
+This involves registering or signing into an account. Then we'll build out
+our `auth` service for working with the token.
+
+{video: simple-auth-tokens}
+
+## Getting a Token
+
+There are two different actions a user can perform to identify themselves to
+the server (and thus receive a token): when a user first signs up and when the
+user logs in. We'll use a `user` service to handle these two interactions:
+
+{x: create user register}
+Create the `user.register()` method
+
+```javascript
+self.register = function(username, password) {
+  return $http.post(API + '/auth/register', {
+      username: username,
+      password: password
+    })
+}
+```
+
+{x: create user login}
+Create the `user.login()` method
+
+```javascript
+self.login = function(username, password) {
+  return $http.post(API + '/auth/login', {
+      username: username,
+      password: password
+    })
+};
+```
+
+You can now create an account or authenticate against a previous account. If
+either action is successful, you should see a JWT printed out to the JavaScript
+console.
+
+{note}
+The test server is liable to clear account information at anytime so if
+a previously registered account no longer works, just create another one.
+
+
+Now that we can authenticate against the server and receive a token, we need to
+build out some functionality to parse, save, and retrieve the token
+information. To do this, we're going to use a separate service called `auth`.
+
+## Decoding the Token
+
+{x: decode claims object}
+As previously mentioned JWTs can contain custom properties in the claims
+object, which we will want to decode. Create a custom method in `authService`
+to do that:
+
+```javascript
+self.parseJwt = function(token) {
+  var base64Url = token.split('.')[1];
+  var base64 = base64Url.replace('-', '+').replace('_', '/');
+  return JSON.parse($window.atob(base64));
+}
+```
+
+The test server includes three properties in the claims object:
+- `username` - should be the same you used when registering
+- `id` - allows the server to easily query the user from the database processing requests
+- `exp` - the expiration date in UNIX time
+
+{note}
+While you could store many attributes in the JWT, it's a good idea to
+keep the number to a minimum as the token must be sent with every request and
+larger tokens == larger requests.
+
+
+## Persisting the Token
+
+As long as the client possess a valid token, they can be considered
+"authenticated." We can persist this state across multiple page visits by
+storing the JWT using `localStorage`.
+
+{x: save token to localstorage}
+Add a method to save the token to `localStorage` thereby logging the user in:
+
+```javascript
+self.saveToken = function(token) {
+  $window.localStorage['jwtToken'] = token;
+}
+```
+
+{x: load the token from localstorage}
+We'll also want a method to retrieve the token from `localStorage`:
+
+```javascript
+self.getToken = function() {
+  return $window.localStorage['jwtToken'];
+}
+```
+
+## Are we Authenticated?
+
+Let's add a method that will check for the existence of a valid token and
+return true or false respectively. This method can be used throughout an
+application to show/hide elements or allow/disallow certain actions.
+
+{x: add isAuthed}
+Add the `isAuthed()` method:
+
+```javascript
+self.isAuthed = function() {
+  var token = self.getToken();
+  if(token) {
+    var params = self.parseJwt(token);
+    return Math.round(new Date().getTime() / 1000) <= params.exp;
+  } else {
+    return false;
+  }
+}
+```
+
+{note}
+Remember that Unix Time is in seconds while JavaScript `Date.now()` returns
+milliseconds, so a conversion is necessary.
+
+## Logging Out
+
+We'll round off the `auth` service with a way to log a user out. Since
+the presence of a valid JWT in `localStorage` is all that separates an
+authenticated user from an unathenticated user, logging out is simply a
+matter of deleting the token.
+
+{x: add logout method}
+Add a final method to the `auth` service to delete the stored JWT:
+
+```javascript
+self.logout = function() {
+  $window.localStorage.removeItem('jwtToken');
+}
+```
+
+# Authenticating With an Interceptor
+
+{video: simple-auth-interceptor}
+
+Now that we have our JWT management in place, let's build out and HTTP
+interceptor to automatically send the token with each request that needs
+authentication.
+
+{x: read about interceptors}
+[Brush up on HTTP interceptors](https://thinkster.io/a-better-way-to-learn-angularjs/interceptors)
+
+
+## Attaching the Token
+
+Authenticating with a JWT involves attaching an `Authorization` header to each
+request with a value consisting of the String "Bearer" and the JWT. This
+method relies on the use of SSL to prevent the token itself from being sniffed.
+
+{x: add authorization header}
+Use the `request()` function to automatically add the `Authorization` header
+to outgoing requests:
+
+```javascript
+request: function(config) {
+  var token = auth.getToken();
+  if(config.url.indexOf(API) === 0 && token) {
+    config.headers.Authorization = 'Bearer ' + token;
+  }
+
+  return config;
+},
+```
+
+{note}
+Notice how we're only adding the header to requests made to the API server.
+
+You should now be able to hit the "get quote" button and see a motivational
+quote... or Star Wars.
+
+{x: requests are authed}
+The requests are being authenticated
+
+
+## Refreshing the Token
+
+Before we wrap up, we have one final think left to do. Because JWTs expire,
+a nice thing to be able to do is to periodically refresh a user's token.
+We can do this by having the server automatically attach a new token
+keyed by `token` to the response of a protected API route.
+
+{x: auto refresh token}
+Using the `response()` callback of the interceptor, we can check for the presence
+of a new token and automatically save it.
+
+```javascript
+response: function(res) {
+  if(res.config.url.indexOf(API) === 0 && res.data.token) {
+    auth.saveToken(res.data.token);
+  }
+
+  return res;
+}
+```
+
+Now if you print out the JWT after successive calls to the 'quote' route
+you'll see it be different each time.
+
+
+# Wrapping Up
+
+JWTs provide a dead-simple way to authenticate users to your service. Because
+they don't depend on cookies or sessions, they work really well across multiple
+different platforms such as iOS or Android.
+
+The demo we constructed illustrates a fairly complete AngularJS implementation
+and is actually similar to the way that we do user authentication here at
+Thinkster.
+
+One case that is glaringly absent from this tutorial is handling automatic user
+redirection in the event of an expired/missing token being used. Because the
+sample app was so simple, it didn't make sense to implement this functionality
+but it's easy to do using the `responseError` function in the interceptor.
+Simply check all failed requests for error code 401 (Unathorized) that were
+directed to the API server. If it happens, redirect the user to the login page
+using.
+
+There are some interesting considerations when implementing the backend part
+of JWT authentication. [Our MEAN tutorial](https://thinkster.io/mean-stack-tutorial/)
+addresses some of these using the Express framework on Node but if you're
+interested in a more detailed follow-up to this tutorial
+[let me know on twitter!](https://twitter.com/IAmMattGreen)

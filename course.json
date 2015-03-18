@@ -1,0 +1,12 @@
+{
+  "title": "Simple AngularJS Authentication with JWT",
+  "description": "",
+  "url": "angularjs-jwt-auth",
+  "twitter": "IAmMattGreen",
+  "coverImage": "",
+  "git": "https://github.com/emgeee/angular-jwt-auth-tutorial",
+
+  "author": {
+    "github": "emgeee"
+  }
+}
