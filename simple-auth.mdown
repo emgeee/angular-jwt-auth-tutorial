@@ -144,7 +144,7 @@ angular.module('app', [])
 For simplicities sake we'll be working out of these two files for the remainder
 of this tutorial.
 
-{note}
+{info}
 Because we'll be making cross-origin requests to the test API, make sure you're
 serving these files from a local webserver and NOT from the file system.
 I recommend http://www.browsersync.io/ (`npm install -g browser-sync`)
@@ -192,7 +192,7 @@ You can now create an account or authenticate against a previous account. If
 either action is successful, you should see a JWT printed out to the JavaScript
 console.
 
-{note}
+{info}
 The test server is liable to clear account information at anytime so if
 a previously registered account no longer works, just create another one.
 
@@ -221,7 +221,7 @@ The test server includes three properties in the claims object:
 - `id` - allows the server to easily query the user from the database processing requests
 - `exp` - the expiration date in UNIX time
 
-{note}
+{info}
 While you could store many attributes in the JWT, it's a good idea to
 keep the number to a minimum as the token must be sent with every request and
 larger tokens == larger requests.
@@ -272,7 +272,7 @@ self.isAuthed = function() {
 }
 ```
 
-{note}
+{info}
 Remember that Unix Time is in seconds while JavaScript `Date.now()` returns
 milliseconds, so a conversion is necessary.
 
@@ -325,7 +325,7 @@ request: function(config) {
 },
 ```
 
-{note}
+{info}
 Notice how we're only adding the header to requests made to the API server.
 
 You should now be able to hit the "get quote" button and see a motivational
