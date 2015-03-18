@@ -10,7 +10,7 @@ against. If you're interested in learning about the backend component, checkout
 our [MEAN tutorial](https://thinkster.io/mean-stack-tutorial/) or let me know
 [on twitter](https://twitter.com/IAmMattGreen)!
 
-{video: simple-auth-intro}
+{intro-video: angular-jwt-intro}
 
 # What are JWTs
 
@@ -33,6 +33,8 @@ You can also find more information about JWT at [jwt.io](http://jwt.io).
 
 # The Setup
 
+{video: the-setup}
+
 Before we dive in, let's start with some scaffolding for our example. Create
 two new files -- index.html and app.js -- in an empty directory and add the
 following code:
@@ -51,12 +53,15 @@ Create index.html
     <h1>Simple Angular Auth - Thinkster</h1>
 
     <input type="text" ng-model="main.username" placeholder="username"><br>
-    <input type="password" ng-model="main.password" placeholder="password"><br><br>
+    <input type="password" ng-model="main.password" placeholder="password"><br>
+    <br>
 
     <button ng-click="main.register()">Register</button>
     <button ng-click="main.login()">Login</button>
     <button ng-click="main.logout()" ng-show="main.isAuthed()">Logout</button>
-    <button ng-click="main.getQuote()">get quote</button><br><br>
+
+    <button ng-click="main.getQuote()">get quote</button>
+    <br><br>
     {{main.message}}
 
     <br><br><br>
@@ -92,13 +97,8 @@ function authService($window) {
 
 function userService($http, API, auth) {
   var self = this;
-  function handleRequest(res) {
-    auth.save(res.data.token);
-    return res.data.message;
-  }
   self.getQuote = function() {
     return $http.get(API + '/auth/quote')
-      .then(handleRequest)
   }
 
   // add authentication methods here
@@ -106,7 +106,7 @@ function userService($http, API, auth) {
 }
 
 // We won't touch anything in here
-function MainCtrl(user) {
+function MainCtrl(user, auth) {
   var self = this;
 
   function handleRequest(res) {
@@ -126,6 +126,12 @@ function MainCtrl(user) {
   self.getQuote = function() {
     user.getQuote()
       .then(handleRequest, handleRequest)
+  }
+  self.logout = function() {
+    auth.logout && auth.logout()
+  }
+  self.isAuthed = function() {
+    return auth.isAuthed ? auth.isAuthed() : false
   }
 }
 
@@ -156,9 +162,9 @@ Before we can really examine the JWT, we'll need to get one from the server.
 This involves registering or signing into an account. Then we'll build out
 our `auth` service for working with the token.
 
-{video: simple-auth-tokens}
-
 ## Getting a Token
+
+{video: getting-token}
 
 There are two different actions a user can perform to identify themselves to
 the server (and thus receive a token): when a user first signs up and when the
@@ -203,6 +209,8 @@ information. To do this, we're going to use a separate service called `auth`.
 
 ## Decoding the Token
 
+{video: parsing-token}
+
 {x: decode claims object}
 As previously mentioned JWTs can contain custom properties in the claims
 object, which we will want to decode. Create a custom method in `authService`
@@ -229,6 +237,8 @@ larger tokens == larger requests.
 
 ## Persisting the Token
 
+{video: persisting-the-token}
+
 As long as the client possess a valid token, they can be considered
 "authenticated." We can persist this state across multiple page visits by
 storing the JWT using `localStorage`.
@@ -252,6 +262,8 @@ self.getToken = function() {
 ```
 
 ## Are we Authenticated?
+
+{video: isAuthed-method}
 
 Let's add a method that will check for the existence of a valid token and
 return true or false respectively. This method can be used throughout an
@@ -294,8 +306,6 @@ self.logout = function() {
 
 # Authenticating With an Interceptor
 
-{video: simple-auth-interceptor}
-
 Now that we have our JWT management in place, let's build out and HTTP
 interceptor to automatically send the token with each request that needs
 authentication.
@@ -304,11 +314,48 @@ authentication.
 [Brush up on HTTP interceptors](https://thinkster.io/a-better-way-to-learn-angularjs/interceptors)
 
 
+## Saving and Refreshing the Token
+
+{video: interceptor-token-save}
+
+At this point, we have created methods for saving and loading tokens but we
+haven't actually wired them up to do so. We can easily do
+this using the `response()` callback of our interceptor. Simply check each
+returning response from the API server for the presence of a `token` then
+call `auth.saveToken()`.
+
+{x: auto save token}
+Automatically save JWT tokens sent back from the server
+
+```javascript
+response: function(res) {
+  if(res.config.url.indexOf(API) === 0 && res.data.token) {
+    auth.saveToken(res.data.token);
+  }
+
+  return res;
+}
+```
+
+Now your `register()` and `login()` calls should actually save the JWT without
+having to do anything else!
+
+One awesome result of using interceptors is the ability to automatically refresh
+the JWT. Anytime a user successfully makes an API call to a protected route, the
+server can attach a new token to the response payload. The interceptor will
+automatically grab the new token and save it so as long as the user continues
+to make requests to the server, the token will never expire and she won't be
+forced to re-authenticate.
+
+
 ## Attaching the Token
 
+{video: interceptor-attaching-token}
+
+Finally, let's attach the token to requests made to the API server.
 Authenticating with a JWT involves attaching an `Authorization` header to each
-request with a value consisting of the String "Bearer" and the JWT. This
-method relies on the use of SSL to prevent the token itself from being sniffed.
+request with a value consisting of the String "Bearer" and the JWT. This method
+relies on the use of SSL to prevent the token itself from being sniffed.
 
 {x: add authorization header}
 Use the `request()` function to automatically add the `Authorization` header
@@ -335,32 +382,10 @@ quote... or Star Wars.
 The requests are being authenticated
 
 
-## Refreshing the Token
-
-Before we wrap up, we have one final think left to do. Because JWTs expire,
-a nice thing to be able to do is to periodically refresh a user's token.
-We can do this by having the server automatically attach a new token
-keyed by `token` to the response of a protected API route.
-
-{x: auto refresh token}
-Using the `response()` callback of the interceptor, we can check for the presence
-of a new token and automatically save it.
-
-```javascript
-response: function(res) {
-  if(res.config.url.indexOf(API) === 0 && res.data.token) {
-    auth.saveToken(res.data.token);
-  }
-
-  return res;
-}
-```
-
-Now if you print out the JWT after successive calls to the 'quote' route
-you'll see it be different each time.
-
 
 # Wrapping Up
+
+{video: wrapping-up}
 
 JWTs provide a dead-simple way to authenticate users to your service. Because
 they don't depend on cookies or sessions, they work really well across multiple
