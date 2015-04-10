@@ -26,7 +26,7 @@ with periods as separators. Some important things to know about JWT's:
 - The token IS signed by the server so if any of the values are changed, the server will reject it
 
 {x: read atlassian guide}
-Read Atlassian's [understaing JWT](https://developer.atlassian.com/static/connect/docs/concepts/understanding-jwt.html) guide
+Read Atlassian's [understanding JWT](https://developer.atlassian.com/static/connect/docs/concepts/understanding-jwt.html) guide
 
 You can also find more information about JWT at [jwt.io](http://jwt.io).
 
